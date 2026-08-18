@@ -78,6 +78,7 @@ tr:hover td{background:var(--bg3)}
       <li data-page="scans"><span class="ic">≡</span><span>扫描历史</span></li>
       <li data-page="components"><span class="ic">◈</span><span>组件知识库</span></li>
       <li data-page="findings"><span class="ic">⚠</span><span>漏洞发现</span></li>
+      <li data-page="defender"><span class="ic">◉</span><span>防守视角</span></li>
       <li data-page="scan-detail"><span class="ic">▤</span><span>扫描详情</span></li>
     </ul>
   </aside>
@@ -147,10 +148,23 @@ tr:hover td{background:var(--bg3)}
         <div class="flow" id="flow-detail"></div>
       </div>
     </div>
+
+    <div id="page-defender" class="hidden">
+      <div class="grid g4" style="margin-bottom:12px">
+        <div class="card metric"><div class="label">24h 观测事件</div><div class="val" id="df-total">-</div><div class="sub">目标机回传</div></div>
+        <div class="card metric"><div class="label">攻击特征命中</div><div class="val" id="df-tagged">-</div><div class="sub">SQLi/XSS/路径穿越等</div></div>
+        <div class="card metric"><div class="label">来源 IP</div><div class="val" id="df-topip" style="font-size:15px">-</div><div class="sub">Top 攻击源</div></div>
+        <div class="card metric"><div class="label">Top 进程</div><div class="val" id="df-topproc" style="font-size:15px">-</div><div class="sub">目标机被调用进程</div></div>
+      </div>
+      <div class="card">
+        <h2>攻击行为观测流 <span class="muted">(目标机 defender 视角 · 只记录不拦截)</span></h2>
+        <div class="flow" id="flow-defender"></div>
+      </div>
+    </div>
   </div>
 </div>
 <script>
-const titles={dashboard:'仪表盘',scans:'扫描历史',components:'组件知识库',findings:'漏洞发现','scan-detail':'扫描详情'};
+const titles={dashboard:'仪表盘',scans:'扫描历史',components:'组件知识库',findings:'漏洞发现','scan-detail':'扫描详情',defender:'防守视角'};
 const nav=document.querySelectorAll('.nav li');
 function showPage(p){
   nav.forEach(n=>n.classList.toggle('active', n.dataset.page===p));
