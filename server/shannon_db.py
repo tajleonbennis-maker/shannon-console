@@ -317,12 +317,12 @@ class ShannonDB:
         for r in self.conn.execute(
                 "SELECT etype, COUNT(*) c FROM defender_events WHERE ts>=? GROUP BY etype", (since,)):
             s["by_etype"][r["etype"]] = r["c"]
-        s["top_ip"] = self.conn.execute(
+        s["top_ip"] = [{"ip": r["src_ip"], "count": r["c"]} for r in self.conn.execute(
             "SELECT src_ip, COUNT(*) c FROM defender_events WHERE ts>=? AND src_ip!='' GROUP BY src_ip ORDER BY c DESC LIMIT 5",
-            (since,)).fetchall()
-        s["top_process"] = self.conn.execute(
+            (since,))]
+        s["top_process"] = [{"process": r["process"], "count": r["c"]} for r in self.conn.execute(
             "SELECT process, COUNT(*) c FROM defender_events WHERE ts>=? AND process!='' GROUP BY process ORDER BY c DESC LIMIT 10",
-            (since,)).fetchall()
+            (since,))]
         s["tagged"] = self.conn.execute(
             "SELECT COUNT(*) c FROM defender_events WHERE ts>=? AND tags!='[]' AND tags IS NOT NULL",
             (since,)).fetchone()["c"]
