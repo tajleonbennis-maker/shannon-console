@@ -94,6 +94,24 @@ CREATE TABLE IF NOT EXISTS events (
     raw         TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_events_scan ON events(scan_id, ts);
+CREATE TABLE IF NOT EXISTS defender_events (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts          REAL,
+    source      TEXT,
+    layer       TEXT,
+    etype       TEXT,
+    process     TEXT,
+    path        TEXT,
+    src_ip      TEXT,
+    method      TEXT,
+    url         TEXT,
+    status      TEXT,
+    tags        TEXT,
+    raw         TEXT,
+    created_at  TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_def_ts ON defender_events(ts);
+CREATE INDEX IF NOT EXISTS idx_def_type ON defender_events(etype);
 """
 
 
@@ -243,6 +261,72 @@ class ShannonDB:
             "SELECT ts, agent, etype, detail FROM events WHERE scan_id=? ORDER BY id DESC LIMIT ?",
             (scan_id, limit)).fetchall()
         return [dict(r) for r in reversed(rows)]
+
+    # ---------- defender_events（防守方观测） ----------
+    def add_defender_event(self, ts, source, layer, etype, process=None, path=None,
+                           src_ip=None, method=None, url=None, status=None, tags=None, raw=None):
+        with self.conn:
+            self.conn.execute(
+                "INSERT INTO defender_events (ts, source, layer, etype, process, path, src_ip, method, url, status, tags, raw, created_at) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                (ts, source, layer, etype, process, path, src_ip, method, url, status,
+                 json.dumps(tags, ensure_ascii=False) if tags else None, raw,
+                 time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
+
+    def add_defender_events_batch(self, events, source="target"):
+        """批量入库防守方事件。events: list of dict。"""
+        n = 0
+        with self.conn:
+            for ev in events:
+                try:
+                    self.conn.execute(
+                        "INSERT INTO defender_events (ts, source, layer, etype, process, path, src_ip, method, url, status, tags, raw, created_at) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        (ev.get("ts", time.time()), source, ev.get("layer", "unknown"),
+                         ev.get("etype", ""), ev.get("process", ""), ev.get("path", ""),
+                         ev.get("src_ip", ""), ev.get("method", ""), ev.get("url", ""),
+                         ev.get("status", ""),
+                         json.dumps(ev.get("tags", []), ensure_ascii=False),
+                         json.dumps(ev, ensure_ascii=False),
+                         time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())))
+                    n += 1
+                except Exception:
+                    continue
+        return n
+
+    def list_defender_events(self, limit=500, etype=None, since=None):
+        sql = "SELECT * FROM defender_events WHERE 1=1"
+        args = []
+        if etype:
+            sql += " AND etype=?"
+            args.append(etype)
+        if since:
+            sql += " AND ts>=?"
+            args.append(since)
+        sql += " ORDER BY id DESC LIMIT ?"
+        args.append(limit)
+        rows = self.conn.execute(sql, args).fetchall()
+        return [dict(r) for r in reversed(rows)]
+
+    def defender_stats(self, hours=24):
+        since = time.time() - hours * 3600
+        s = {}
+        s["total"] = self.conn.execute(
+            "SELECT COUNT(*) c FROM defender_events WHERE ts>=?", (since,)).fetchone()["c"]
+        s["by_etype"] = {}
+        for r in self.conn.execute(
+                "SELECT etype, COUNT(*) c FROM defender_events WHERE ts>=? GROUP BY etype", (since,)):
+            s["by_etype"][r["etype"]] = r["c"]
+        s["top_ip"] = self.conn.execute(
+            "SELECT src_ip, COUNT(*) c FROM defender_events WHERE ts>=? AND src_ip!='' GROUP BY src_ip ORDER BY c DESC LIMIT 5",
+            (since,)).fetchall()
+        s["top_process"] = self.conn.execute(
+            "SELECT process, COUNT(*) c FROM defender_events WHERE ts>=? AND process!='' GROUP BY process ORDER BY c DESC LIMIT 10",
+            (since,)).fetchall()
+        s["tagged"] = self.conn.execute(
+            "SELECT COUNT(*) c FROM defender_events WHERE ts>=? AND tags!='[]' AND tags IS NOT NULL",
+            (since,)).fetchone()["c"]
+        return s
 
     # ---------- stats ----------
     def stats(self):
