@@ -115,6 +115,14 @@ class Handler(BaseHTTPRequestHandler):
                 self._send(*api_ok({"events": db.list_events(scan_id, limit=500)}))
             elif parsed.path == "/api/health":
                 self._send(*api_ok({"ok": True, "time": time.strftime("%H:%M:%S")}))
+            elif parsed.path == "/api/defender-events":
+                qs = parse_qs(parsed.query)
+                etype = qs.get("etype", [None])[0]
+                hours = qs.get("hours", [None])[0]
+                since = time.time() - int(hours) * 3600 if hours else None
+                self._send(*api_ok({"events": db.list_defender_events(limit=1000, etype=etype, since=since)}))
+            elif parsed.path == "/api/defender-stats":
+                self._send(*api_ok(db.defender_stats()))
             else:
                 self._send(*api_err(404, "not found"))
         finally:
@@ -140,6 +148,14 @@ class Handler(BaseHTTPRequestHandler):
                     self._send(*api_ok(result))
                 except Exception as e:
                     self._send(*api_err(500, f"ingest failed: {e}"))
+        elif parsed.path == "/api/defender-events":
+            # 目标机传感器回传：{"events": [...], "source": "..."}
+            db = ShannonDB(DB_PATH)
+            try:
+                n = db.add_defender_events_batch(body.get("events", []), source=body.get("source", "target"))
+                self._send(*api_ok({"ingested": n}))
+            finally:
+                db.close()
         else:
             self._send(*api_err(404, "not found"))
 
