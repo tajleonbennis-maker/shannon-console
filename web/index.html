@@ -153,12 +153,16 @@ tr:hover td{background:var(--bg3)}
       <div class="grid g4" style="margin-bottom:12px">
         <div class="card metric"><div class="label">24h 观测事件</div><div class="val" id="df-total">-</div><div class="sub">目标机回传</div></div>
         <div class="card metric"><div class="label">攻击特征命中</div><div class="val" id="df-tagged">-</div><div class="sub">SQLi/XSS/路径穿越等</div></div>
-        <div class="card metric"><div class="label">来源 IP</div><div class="val" id="df-topip" style="font-size:15px">-</div><div class="sub">Top 攻击源</div></div>
-        <div class="card metric"><div class="label">Top 进程</div><div class="val" id="df-topproc" style="font-size:15px">-</div><div class="sub">目标机被调用进程</div></div>
+        <div class="card metric"><div class="label">HTTP 请求</div><div class="val" id="df-http">-</div><div class="sub">目标应用访问</div></div>
+        <div class="card metric"><div class="label">进程执行</div><div class="val" id="df-exec">-</div><div class="sub">EXECVE 记录</div></div>
+      </div>
+      <div class="card" style="margin-bottom:12px">
+        <h2>攻击行为观测流 <span class="muted">(目标机 defender 视角 · 只记录不拦截)</span></h2>
+        <div class="flow" id="flow-defender" style="max-height:420px;overflow-y:auto;"></div>
       </div>
       <div class="card">
-        <h2>攻击行为观测流 <span class="muted">(目标机 defender 视角 · 只记录不拦截)</span></h2>
-        <div class="flow" id="flow-defender"></div>
+        <h2>来源 IP 分布</h2>
+        <div class="chips" id="df-ips"></div>
       </div>
     </div>
   </div>
@@ -260,8 +264,34 @@ async function loadDetail(){
   }).join('')||'<div class="empty">无事件</div>';
 }
 
-loadDashboard();loadScans();loadComponents();loadFindings();
+async function loadDefender(){
+  try{
+    const st=await api('/api/defender-stats');
+    document.getElementById('df-total').textContent=st.total;
+    document.getElementById('df-tagged').textContent=st.tagged;
+    document.getElementById('df-http').textContent=st.by_etype?.HTTP||0;
+    document.getElementById('df-exec').textContent=st.by_etype?.EXECVE||0;
+    const ips=(st.top_ip||[]).map(x=>`<div class="chip"><div class="t">${esc(x.ip)}</div><div class="n">${x.count}</div></div>`).join('');
+    document.getElementById('df-ips').innerHTML=ips||'<span class="muted">暂无</span>';
+    const evs=(await api('/api/defender-events?hours=24')).events;
+    const layerCls={HTTP:'TOOL',EXECVE:'LLM',SYSCALL:'AGENT',PATH:'PHASE',USER_LOGIN:'ERR',CRED_DISP:'ERR',CRED_ACQ:'ERR'};
+    document.getElementById('flow-defender').innerHTML=evs.slice(-120).map(e=>{
+      const tags=(e.tags&&e.tags!=='[]')?JSON.parse(e.tags||'[]').map(t=>`<span class="tag high">${esc(t)}</span>`).join(''):'';
+      const t=new Date(e.ts*1000).toLocaleTimeString('zh-CN',{hour12:false});
+      let desc='';
+      if(e.etype==='HTTP') desc=`${esc(e.method||'')} ${esc(e.url||'')} <span class="muted">[${esc(e.status||'')}]</span>`;
+      else if(e.process) desc=`${esc(e.process)} ${e.path?('→ '+esc(e.path)):''}`;
+      else desc=esc(e.path||e.etype||'');
+      return `<div class="ev"><span class="tm">${t}</span>[<b class="${layerCls[e.etype]||''}">${esc(e.etype)}</b>] ${desc} ${tags}</div>`;
+    }).join('')||'<div class="empty">暂无观测数据 — 检查 165 目标机传感器与 pull_defender</div>';
+  }catch(e){
+    document.getElementById('flow-defender').innerHTML=`<div class="empty">加载失败: ${esc(e.message)}</div>`;
+  }
+}
+
+loadDashboard();loadScans();loadComponents();loadFindings();loadDefender();
 setInterval(()=>{if(!document.getElementById('page-dashboard').classList.contains('hidden'))loadDashboard();},10000);
+setInterval(()=>{if(!document.getElementById('page-defender').classList.contains('hidden'))loadDefender();},10000);
 </script>
 </body>
 </html>
